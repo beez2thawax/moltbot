@@ -1,45 +1,61 @@
+version: '3.8'
+
 services:
   moltbot-gateway:
-    image: ${CLAWDBOT_IMAGE:-moltbot:local}
-    environment:
-      HOME: /home/node
-      TERM: xterm-256color
-      CLAWDBOT_GATEWAY_TOKEN: ${CLAWDBOT_GATEWAY_TOKEN}
-      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
-      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
-      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
-    volumes:
-      - ${CLAWDBOT_CONFIG_DIR}:/home/node/.clawdbot
-      - ${CLAWDBOT_WORKSPACE_DIR}:/home/node/clawd
-    ports:
-      - "${CLAWDBOT_GATEWAY_PORT:-18789}:18789"
-      - "${CLAWDBOT_BRIDGE_PORT:-18790}:18790"
-    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: moltbot:local  # Local tag; Coolify builds and uses this
+    container_name: moltbot-gateway
     restart: unless-stopped
-    command:
-      [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "${CLAWDBOT_GATEWAY_BIND:-lan}",
-        "--port",
-        "${CLAWDBOT_GATEWAY_PORT:-18789}"
-      ]
-
-  moltbot-cli:
-    image: ${CLAWDBOT_IMAGE:-moltbot:local}
+    init: true
+    ports:
+      - "18789:18789"   # Gateway WebSocket/Control UI port
+      - "18790:18790"   # Optional bridge port (if enabled)
     environment:
-      HOME: /home/node
-      TERM: xterm-256color
-      BROWSER: echo
-      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
-      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
-      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
+      - HOME=/home/node
+      - TERM=xterm-256color
+      - MOLTBOT_GATEWAY_TOKEN=${MOLTBOT_GATEWAY_TOKEN}          # Required: your secure token
+      - GATEWAY_PORT=18789
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}                  # Primary Claude key
+      # Add others as needed:
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - GROQ_API_KEY=${GROQ_API_KEY}
+      # - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
     volumes:
-      - ${CLAWDBOT_CONFIG_DIR}:/home/node/.clawdbot
-      - ${CLAWDBOT_WORKSPACE_DIR}:/home/node/clawd
+      - moltbot_config:/home/node/.clawdbot     # Persistent config, creds, models
+      - moltbot_workspace:/home/node/clawd      # Workspace for agent files/tools
+    command: >
+      node dist/index.js gateway
+      --bind lan
+      --port 18789
+
+  # Optional: CLI service for manual onboarding/testing (attach via console)
+  moltbot-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: moltbot:local
+    container_name: moltbot-cli
+    restart: no               # Only run when needed
     stdin_open: true
     tty: true
     init: true
+    environment:
+      - HOME=/home/node
+      - TERM=xterm-256color
+      - BROWSER=echo
+      # Copy same keys as gateway
+      - MOLTBOT_GATEWAY_TOKEN=${MOLTBOT_GATEWAY_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - moltbot_config:/home/node/.clawdbot
+      - moltbot_workspace:/home/node/clawd
     entrypoint: ["node", "dist/index.js"]
+
+volumes:
+  moltbot_config:
+    name: moltbot_config
+  moltbot_workspace:
+    name: moltbot_workspace
